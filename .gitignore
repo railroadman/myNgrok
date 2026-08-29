@@ -1,0 +1,6 @@
+.env
+bin/
+dist/
+coverage/
+*.log
+frontend/node_modules/
