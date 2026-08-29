@@ -1,0 +1,6 @@
+<script setup lang="ts">
+import { ref } from 'vue'; import { useRouter } from 'vue-router'; import { useAuthStore } from '../stores/auth'
+const email = ref(''); const password = ref(''); const confirm = ref(''); const error = ref(''); const auth = useAuthStore(); const router = useRouter()
+async function submit() { error.value = ''; if (password.value !== confirm.value) { error.value = 'Passwords do not match'; return }; try { await auth.register(email.value, password.value); await router.push('/app') } catch (e: any) { error.value = e.message ?? 'Registration failed' } }
+</script>
+<template><section class="auth-page"><p class="eyebrow">New gateway operator</p><h1>Create workspace.</h1><p>Generate an agent token and start exposing your local service.</p><form @submit.prevent="submit"><label>Email<input v-model="email" type="email" autocomplete="email" required /></label><label>Password<input v-model="password" type="password" autocomplete="new-password" minlength="10" required /></label><label>Confirm password<input v-model="confirm" type="password" autocomplete="new-password" minlength="10" required /></label><p v-if="error" class="alert" role="alert">{{ error }}</p><button>Create account</button></form><p><RouterLink to="/login">Already have access? Sign in →</RouterLink></p></section></template>

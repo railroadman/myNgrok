@@ -1,0 +1,24 @@
+{
+	email {$CADDY_EMAIL}
+}
+
+# Control plane: Caddy obtains and renews the certificate for the root domain.
+{$PUBLIC_BASE_DOMAIN} {
+	encode zstd gzip
+
+	@backend path /api/* /health/* /metrics
+	handle @backend {
+		reverse_proxy backend:8080
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
+# Public tunnels require a wildcard certificate. Mount the certificate and key
+# into the Caddy container and set the two file-path environment variables.
+*.{$PUBLIC_BASE_DOMAIN} {
+	tls {$WILDCARD_TLS_CERT_FILE} {$WILDCARD_TLS_KEY_FILE}
+	reverse_proxy backend:8080
+}

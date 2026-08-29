@@ -1,0 +1,22 @@
+[Unit]
+Description=myNgrok tunnel agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=tunnel-agent
+Group=tunnel-agent
+WorkingDirectory=/var/lib/tunnel-agent
+EnvironmentFile=/etc/myngrok/tunnel-agent.env
+ExecStart=/usr/local/bin/tunnel-agent http ${LOCAL_ADDRESS} --token ${AGENT_TOKEN} --gateway ${GATEWAY_URL}
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tunnel-agent
+
+[Install]
+WantedBy=multi-user.target
