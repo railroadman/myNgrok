@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,5 +40,47 @@ func TestPoolPostgresLifecycle(t *testing.T) {
 	pool.Close()
 	if err := pool.Ping(ctx); err == nil {
 		t.Fatal("closed pool still passed ping")
+	}
+}
+
+func TestMigrateAppliesAndSkipsMigrationsInAnIsolatedSchema(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://tunnel:tunnel@127.0.0.1:15432/tunnel?sslmode=disable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	admin, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	schema := fmt.Sprintf("coverage_migrate_%d", time.Now().UnixNano())
+	if _, err := admin.Raw().Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Raw().Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+	separator := "?"
+	if strings.Contains(databaseURL, "?") {
+		separator = "&"
+	}
+	isolationURL := databaseURL + separator + "search_path=" + schema + "%2Cpublic"
+	pool, err := Open(ctx, isolationURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := pool.Migrate(ctx); err != nil {
+		t.Fatalf("first migrate: %v", err)
+	}
+	if err := pool.Migrate(ctx); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	var applied int
+	if err := pool.Raw().QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 5 {
+		t.Fatalf("applied migrations=%d, want 5", applied)
 	}
 }

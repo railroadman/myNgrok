@@ -22,3 +22,13 @@ func TestGenerateProducesOpaquePrefixedTokens(t *testing.T) {
 		t.Fatal("token hash must not equal token plaintext")
 	}
 }
+
+func TestVisiblePrefixKeepsShortValuesAndTruncatesLongTokens(t *testing.T) {
+	t.Parallel()
+	if got := visiblePrefix("short"); got != "short" {
+		t.Fatalf("short prefix=%q", got)
+	}
+	if got := visiblePrefix("123456789012345"); got != "123456789012" {
+		t.Fatalf("long prefix=%q", got)
+	}
+}

@@ -21,6 +21,24 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 }
 
+func TestReadinessReportsUnavailableDatabase(t *testing.T) {
+	handler := NewHandler(slog.Default(), func() bool { return false }, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
+	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "{\"status\":\"not ready\"}\n" {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
+func TestClientIPHandlesAddressWithoutPort(t *testing.T) {
+	if got := clientIP("203.0.113.10:443"); got != "203.0.113.10" {
+		t.Fatalf("with port=%q", got)
+	}
+	if got := clientIP("local-client"); got != "local-client" {
+		t.Fatalf("without port=%q", got)
+	}
+}
+
 func TestRequestLogUsesStructuredFields(t *testing.T) {
 	var output bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&output, nil))

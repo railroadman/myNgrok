@@ -44,6 +44,9 @@ func TestServicePostgresLifecycle(t *testing.T) {
 	if _, err := service.Create(ctx, userID, ""); err == nil {
 		t.Fatal("empty name was accepted")
 	}
+	if _, err := service.Create(ctx, userID, strings.Repeat("x", 129)); err == nil {
+		t.Fatal("overlong name was accepted")
+	}
 	items, err := service.List(ctx, userID)
 	if err != nil || len(items) != 1 || items[0].ID != created.ID {
 		t.Fatalf("items=%#v err=%v", items, err)
@@ -98,6 +101,14 @@ func TestHTTPHandlerPostgresCreateListAndRevoke(t *testing.T) {
 		t.Fatalf("malformed status=%d", malformed.Code)
 	}
 
+	emptyName := httptest.NewRecorder()
+	emptyNameRequest := httptest.NewRequest(http.MethodPost, "/api/v1/agent-tokens", strings.NewReader(`{"name":"  "}`))
+	emptyNameRequest.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
+	handler.ServeHTTP(emptyName, emptyNameRequest)
+	if emptyName.Code != http.StatusBadRequest {
+		t.Fatalf("empty name status=%d", emptyName.Code)
+	}
+
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/agent-tokens", strings.NewReader(`{"name":"http-token"}`))
 	request.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
 	created := httptest.NewRecorder()
@@ -142,5 +153,13 @@ func TestHTTPHandlerPostgresCreateListAndRevoke(t *testing.T) {
 	handler.ServeHTTP(invalidPath, invalidRequest)
 	if invalidPath.Code != http.StatusNotFound {
 		t.Fatalf("invalid path status=%d", invalidPath.Code)
+	}
+
+	emptyDelete := httptest.NewRecorder()
+	emptyDeleteRequest := httptest.NewRequest(http.MethodDelete, "/api/v1/agent-tokens/", nil)
+	emptyDeleteRequest.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
+	handler.ServeHTTP(emptyDelete, emptyDeleteRequest)
+	if emptyDelete.Code != http.StatusNotFound {
+		t.Fatalf("empty delete status=%d", emptyDelete.Code)
 	}
 }

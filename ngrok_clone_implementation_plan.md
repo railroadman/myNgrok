@@ -31,7 +31,7 @@
 > Coverage remediation and integration-test stabilization are scheduled after
 > deployment tasks, at the user's direction. Raise coverage through meaningful
 > tests; do not exclude production packages or lower the measured scope.
-> Latest measurement: backend **80.1%**, agent **80.6%**. Both codebases meet
+> Latest measurement: backend **86.2%**, agent **80.6%**. Both codebases meet
 > the coverage quality gate.
 >
 > **Current focus:** All implementation and coverage gates are complete.

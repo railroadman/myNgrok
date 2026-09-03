@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +117,72 @@ func TestHTTPHandlerAuthLifecycle(t *testing.T) {
 	logoutRequest.AddCookie(refreshed.Result().Cookies()[0])
 	logout := httptest.NewRecorder()
 	handler.ServeHTTP(logout, logoutRequest)
+	if logout.Code != http.StatusNoContent || len(logout.Result().Cookies()) != 2 {
+		t.Fatalf("logout status=%d cookies=%#v", logout.Code, logout.Result().Cookies())
+	}
+}
+
+func TestHTTPHandlerReportsAuthenticationErrors(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		databaseURL = "postgres://tunnel:tunnel@127.0.0.1:15432/tunnel?sslmode=disable"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := database.Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := pool.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(pool.Raw(), "access-secret", "refresh-secret", time.Hour, 24*time.Hour)
+	handler := NewHTTPHandler(service, false)
+	email := fmt.Sprintf("http-errors-%d@example.test", time.Now().UnixNano())
+	if _, err := service.Register(ctx, email, "secure-password"); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Raw().Exec(context.Background(), `DELETE FROM users WHERE email=$1`, email)
+
+	doJSON := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.RemoteAddr = "198.51.100.4:1234"
+		req.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		return response
+	}
+	duplicate := doJSON(http.MethodPost, "/api/v1/auth/register", fmt.Sprintf(`{"email":%q,"password":"secure-password"}`, email))
+	if duplicate.Code != http.StatusConflict {
+		t.Fatalf("duplicate status=%d body=%s", duplicate.Code, duplicate.Body.String())
+	}
+	invalidRegistration := doJSON(http.MethodPost, "/api/v1/auth/register", `{"email":"not-an-email","password":"short"}`)
+	if invalidRegistration.Code != http.StatusBadRequest {
+		t.Fatalf("invalid registration status=%d", invalidRegistration.Code)
+	}
+	wrongPassword := doJSON(http.MethodPost, "/api/v1/auth/login", fmt.Sprintf(`{"email":%q,"password":"wrong-password"}`, email))
+	if wrongPassword.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong password status=%d", wrongPassword.Code)
+	}
+	noRefresh := doJSON(http.MethodPost, "/api/v1/auth/refresh", "")
+	if noRefresh.Code != http.StatusUnauthorized || len(noRefresh.Result().Cookies()) != 2 {
+		t.Fatalf("refresh status=%d cookies=%#v", noRefresh.Code, noRefresh.Result().Cookies())
+	}
+	noAccessToken := httptest.NewRecorder()
+	handler.ServeHTTP(noAccessToken, httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil))
+	if noAccessToken.Code != http.StatusUnauthorized {
+		t.Fatalf("missing token status=%d", noAccessToken.Code)
+	}
+	invalidAccessToken := httptest.NewRecorder()
+	invalidRequest := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	invalidRequest.Header.Set("Authorization", "Bearer invalid")
+	handler.ServeHTTP(invalidAccessToken, invalidRequest)
+	if invalidAccessToken.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid token status=%d", invalidAccessToken.Code)
+	}
+	logout := httptest.NewRecorder()
+	handler.ServeHTTP(logout, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil))
 	if logout.Code != http.StatusNoContent || len(logout.Result().Cookies()) != 2 {
 		t.Fatalf("logout status=%d cookies=%#v", logout.Code, logout.Result().Cookies())
 	}

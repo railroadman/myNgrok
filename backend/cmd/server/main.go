@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,19 +28,25 @@ func main() {
 		slog.Error("invalid configuration", "error", err)
 		os.Exit(1)
 	}
-
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg, logger); err != nil {
+		logger.Error("server stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer startupCancel()
 	db, err := database.Open(startupCtx, cfg.DatabaseURL)
 	if err != nil {
-		logger.Error("database unavailable", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("database unavailable: %w", err)
 	}
 	defer db.Close()
 	if err := db.Migrate(startupCtx); err != nil {
-		logger.Error("database migration failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("database migration failed: %w", err)
 	}
 	authService := auth.NewService(db.Raw(), cfg.Auth.AccessSecret, cfg.Auth.RefreshSecret, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL)
 	authHandler := auth.NewHTTPHandler(authService, cfg.Environment != "development")
@@ -88,21 +95,18 @@ func main() {
 		errCh <- httpServer.ListenAndServe()
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	select {
 	case err := <-errCh:
 		if !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server stopped unexpectedly", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("server stopped unexpectedly: %w", err)
 		}
 	case <-ctx.Done():
 		sessions.CloseAll()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			logger.Error("graceful shutdown failed", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("graceful shutdown failed: %w", err)
 		}
 	}
+	return nil
 }

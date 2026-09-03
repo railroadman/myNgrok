@@ -4,6 +4,9 @@ Self-hosted HTTP tunnel platform. The repository is being built in tracked phase
 [`ngrok_clone_implementation_plan.md`](ngrok_clone_implementation_plan.md) for the
 authoritative progress checklist.
 
+For an implementation-level description of the Go gateway, packages, data flow,
+database, API, protocol and operational limits, see [backend.md](docs/backend.md).
+
 ## Development
 
 ```powershell
