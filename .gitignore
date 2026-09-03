@@ -2,5 +2,10 @@
 bin/
 dist/
 coverage/
+coverage
+*.out
 *.log
 frontend/node_modules/
+.idea/
+.claude/
+.codegraph/
