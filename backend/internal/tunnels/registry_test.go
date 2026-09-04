@@ -40,3 +40,30 @@ func TestRegistryTracksTrafficForActiveTunnel(t *testing.T) {
 		t.Fatalf("traffic=%#v", got)
 	}
 }
+
+func TestRegistryTracksPerUserTrafficDeltasAndDrains(t *testing.T) {
+	registry := NewRegistry()
+	registry.Open(ActiveTunnel{ID: "tun_1", Subdomain: "one", UserID: "user_a"})
+	registry.Open(ActiveTunnel{ID: "tun_2", Subdomain: "two", UserID: "user_b"})
+	registry.RecordTraffic("tun_1", 12, 34)
+	registry.RecordTraffic("tun_1", 8, 16)
+	registry.RecordTraffic("tun_2", 100, 200)
+
+	deltas := registry.DrainUserDeltas()
+	if got := deltas["user_a"]; got.RequestsTotal != 2 || got.RequestBytes != 20 || got.ResponseBytes != 50 {
+		t.Fatalf("user_a delta=%#v", got)
+	}
+	if got := deltas["user_b"]; got.RequestsTotal != 1 || got.RequestBytes != 100 || got.ResponseBytes != 200 {
+		t.Fatalf("user_b delta=%#v", got)
+	}
+
+	// A second drain immediately after must be empty: deltas are consumed, not accumulated forever.
+	if again := registry.DrainUserDeltas(); len(again) != 0 {
+		t.Fatalf("expected drained deltas to reset, got %#v", again)
+	}
+
+	registry.RecordTraffic("tun_1", 5, 5)
+	if got := registry.DrainUserDeltas()["user_a"]; got.RequestsTotal != 1 || got.RequestBytes != 5 || got.ResponseBytes != 5 {
+		t.Fatalf("post-drain delta=%#v", got)
+	}
+}

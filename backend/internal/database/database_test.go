@@ -80,7 +80,7 @@ func TestMigrateAppliesAndSkipsMigrationsInAnIsolatedSchema(t *testing.T) {
 	if err := pool.Raw().QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if applied != 5 {
-		t.Fatalf("applied migrations=%d, want 5", applied)
+	if applied != 6 {
+		t.Fatalf("applied migrations=%d, want 6", applied)
 	}
 }

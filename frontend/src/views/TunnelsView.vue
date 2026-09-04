@@ -19,7 +19,6 @@ onMounted(load)
 </script>
 <template>
   <section class="tunnels-page" aria-labelledby="tunnels-heading">
-    <nav><RouterLink to="/app">Dashboard</RouterLink> · <RouterLink to="/app/agents">Agents</RouterLink> · <RouterLink to="/app/tokens">Tokens</RouterLink></nav>
     <header><p class="eyebrow">Public routes</p><h1 id="tunnels-heading">Tunnels</h1><p>{{ activeCount }} active of {{ tunnels.length }}</p></header>
     <p v-if="loading" aria-live="polite">Loading tunnels…</p><p v-else-if="error" role="alert">{{ error }}</p>
     <div v-else-if="tunnels.length" class="table-wrap"><table><thead><tr><th>Status</th><th>Public subdomain</th><th>Local destination</th><th>Agent</th></tr></thead><tbody><tr v-for="tunnel in tunnels" :key="tunnel.id"><td><span class="badge" :class="tunnel.status">{{ tunnel.status }}</span></td><td><code>{{ tunnel.subdomain }}</code></td><td><code>{{ tunnel.localAddress }}</code></td><td><code>{{ tunnel.agentId }}</code></td></tr></tbody></table></div>

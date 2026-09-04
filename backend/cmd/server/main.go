@@ -19,6 +19,7 @@ import (
 	"github.com/myngrok/backend/internal/gateway"
 	"github.com/myngrok/backend/internal/protocol"
 	"github.com/myngrok/backend/internal/server"
+	"github.com/myngrok/backend/internal/traffic"
 	"github.com/myngrok/backend/internal/tunnels"
 )
 
@@ -52,6 +53,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	authHandler := auth.NewHTTPHandler(authService, cfg.Environment != "development")
 	agentService := agents.NewService(db.Raw())
 	tunnelService := tunnels.NewService(db.Raw())
+	trafficService := traffic.NewService(db.Raw())
 	registry := tunnels.NewRegistry()
 	sessions := gateway.NewSessionManager()
 	metrics := server.NewMetrics()
@@ -72,22 +74,39 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		if err != nil {
 			return protocol.TunnelOpenedPayload{}, err
 		}
-		registry.Open(tunnels.ActiveTunnel{ID: tunnel.ID, Subdomain: tunnel.Subdomain, AgentID: agentID, SessionID: sessionID, LocalAddress: localAddress})
+		registry.Open(tunnels.ActiveTunnel{ID: tunnel.ID, Subdomain: tunnel.Subdomain, AgentID: agentID, UserID: tunnel.UserID, SessionID: sessionID, LocalAddress: localAddress})
 		return protocol.TunnelOpenedPayload{TunnelID: tunnel.ID, Subdomain: tunnel.Subdomain, PublicURL: "https://" + tunnel.Subdomain + "." + cfg.PublicBaseDomain}, nil
 	})
 	agentHandler := agents.NewHTTPHandler(agentService, authService)
 	tunnelHandler := tunnels.NewHTTPHandler(tunnelService, authService)
+	trafficHandler := traffic.NewHTTPHandler(trafficService, authService)
 	handler := server.NewHandler(logger, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		return db.Ping(ctx) == nil
-	}, authHandler, agentTokenHandler, agentConnectHandler, agentHandler, tunnelHandler, tunnels.NewPublicHandlerWithTimeout(cfg.PublicBaseDomain, registry, sessions, cfg.TunnelRequestTimeout), cfg.CORSAllowedOrigins, metrics)
+	}, authHandler, agentTokenHandler, agentConnectHandler, agentHandler, tunnelHandler, trafficHandler, tunnels.NewPublicHandlerWithTimeout(cfg.PublicBaseDomain, registry, sessions, cfg.TunnelRequestTimeout), cfg.CORSAllowedOrigins, metrics)
 	httpServer := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+
+	trafficFlushDone := make(chan struct{})
+	go func() {
+		defer close(trafficFlushDone)
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				flushTraffic(context.Background(), registry, trafficService, logger)
+			case <-ctx.Done():
+				flushTraffic(context.Background(), registry, trafficService, logger)
+				return
+			}
+		}
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -101,6 +120,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 			return fmt.Errorf("server stopped unexpectedly: %w", err)
 		}
 	case <-ctx.Done():
+		<-trafficFlushDone
 		sessions.CloseAll()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -109,4 +129,20 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		}
 	}
 	return nil
+}
+
+// flushTraffic persists the traffic accumulated in the registry since the
+// last flush. It is best-effort: a failed flush is logged, not fatal, since
+// losing one interval's worth of counter precision is preferable to
+// crashing the request path.
+func flushTraffic(ctx context.Context, registry *tunnels.Registry, trafficService *traffic.Service, logger *slog.Logger) {
+	if registry == nil || trafficService == nil {
+		return
+	}
+	for userID, delta := range registry.DrainUserDeltas() {
+		metrics := traffic.Metrics{RequestsTotal: delta.RequestsTotal, RequestBytes: delta.RequestBytes, ResponseBytes: delta.ResponseBytes}
+		if err := trafficService.AddDelta(ctx, userID, metrics); err != nil {
+			logger.Error("traffic flush failed", "user_id", userID, "error", err)
+		}
+	}
 }

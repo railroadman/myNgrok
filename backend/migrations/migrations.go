@@ -22,10 +22,14 @@ var createAgents string
 //go:embed 005_create_tunnels.up.sql
 var createTunnels string
 
+//go:embed 006_create_traffic_totals.up.sql
+var createTrafficTotals string
+
 var All = []Migration{
 	{Version: "001_enable_pgcrypto", UpSQL: enablePGCrypto},
 	{Version: "002_create_auth", UpSQL: createAuth},
 	{Version: "003_create_agent_tokens", UpSQL: createAgentTokens},
 	{Version: "004_create_agents", UpSQL: createAgents},
 	{Version: "005_create_tunnels", UpSQL: createTunnels},
+	{Version: "006_create_traffic_totals", UpSQL: createTrafficTotals},
 }

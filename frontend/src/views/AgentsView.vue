@@ -19,7 +19,6 @@ onMounted(load)
 </script>
 <template>
   <section class="agents-page" aria-labelledby="agents-heading">
-    <nav><RouterLink to="/app">Dashboard</RouterLink> · <RouterLink to="/app/tokens">Tokens</RouterLink></nav>
     <header><p class="eyebrow">Gateway fleet</p><h1 id="agents-heading">Agents</h1><p>{{ online }} online of {{ agents.length }}</p></header>
     <p v-if="loading" aria-live="polite">Loading agents…</p><p v-else-if="error" role="alert">{{ error }}</p>
     <div v-else-if="agents.length" class="agent-grid"><article v-for="agent in agents" :key="agent.id" class="agent-card"><div><span class="status" :class="agent.connected ? 'online' : 'offline'"/> {{ agent.connected ? 'Online' : 'Offline' }}</div><h2>{{ agent.hostname }}</h2><p>{{ agent.os }}/{{ agent.arch }} · {{ agent.version }}</p><code>{{ agent.instanceID }}</code><small v-if="agent.lastSeenAt">Last seen: {{ new Date(agent.lastSeenAt).toLocaleString() }}</small></article></div>

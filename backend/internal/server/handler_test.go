@@ -11,7 +11,7 @@ import (
 
 func TestHealthEndpoints(t *testing.T) {
 	t.Parallel()
-	handler := NewHandler(slog.Default(), func() bool { return true }, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil)
+	handler := NewHandler(slog.Default(), func() bool { return true }, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil)
 	for _, path := range []string{"/health/live", "/health/ready"} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
@@ -22,7 +22,7 @@ func TestHealthEndpoints(t *testing.T) {
 }
 
 func TestReadinessReportsUnavailableDatabase(t *testing.T) {
-	handler := NewHandler(slog.Default(), func() bool { return false }, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil)
+	handler := NewHandler(slog.Default(), func() bool { return false }, http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), http.NotFoundHandler(), nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "{\"status\":\"not ready\"}\n" {

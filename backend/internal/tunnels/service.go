@@ -17,6 +17,7 @@ type Tunnel struct {
 	OpenedAt     *time.Time `json:"openedAt"`
 	ClosedAt     *time.Time `json:"closedAt"`
 	AgentID      string     `json:"agentId"`
+	UserID       string     `json:"-"`
 }
 type Service struct{ pool *pgxpool.Pool }
 
@@ -35,7 +36,7 @@ func (s *Service) CloseAgentTunnels(ctx context.Context, agentID string) {
 // local destination. New destinations receive a fresh public subdomain.
 func (s *Service) ReopenForSession(ctx context.Context, agentID, localAddress string) (Tunnel, error) {
 	var tunnel Tunnel
-	err := s.pool.QueryRow(ctx, `UPDATE tunnels SET status='open',opened_at=NOW(),closed_at=NULL,updated_at=NOW() WHERE id=(SELECT id FROM tunnels WHERE agent_id=$1 AND local_address=$2 AND status='closed' ORDER BY updated_at DESC LIMIT 1) RETURNING id::text,subdomain,local_address,status,opened_at,closed_at,agent_id::text`, agentID, localAddress).Scan(&tunnel.ID, &tunnel.Subdomain, &tunnel.LocalAddress, &tunnel.Status, &tunnel.OpenedAt, &tunnel.ClosedAt, &tunnel.AgentID)
+	err := s.pool.QueryRow(ctx, `UPDATE tunnels SET status='open',opened_at=NOW(),closed_at=NULL,updated_at=NOW() WHERE id=(SELECT id FROM tunnels WHERE agent_id=$1 AND local_address=$2 AND status='closed' ORDER BY updated_at DESC LIMIT 1) RETURNING id::text,subdomain,local_address,status,opened_at,closed_at,agent_id::text,user_id::text`, agentID, localAddress).Scan(&tunnel.ID, &tunnel.Subdomain, &tunnel.LocalAddress, &tunnel.Status, &tunnel.OpenedAt, &tunnel.ClosedAt, &tunnel.AgentID, &tunnel.UserID)
 	if err == nil {
 		return tunnel, nil
 	}
@@ -46,7 +47,7 @@ func (s *Service) ReopenForSession(ctx context.Context, agentID, localAddress st
 	if err != nil {
 		return Tunnel{}, err
 	}
-	err = s.pool.QueryRow(ctx, `INSERT INTO tunnels (user_id,agent_id,subdomain,local_address,status,opened_at) SELECT user_id,$1,$2,$3,'open',NOW() FROM agents WHERE id=$1 RETURNING id::text,subdomain,local_address,status,opened_at,closed_at,agent_id::text`, agentID, subdomain, localAddress).Scan(&tunnel.ID, &tunnel.Subdomain, &tunnel.LocalAddress, &tunnel.Status, &tunnel.OpenedAt, &tunnel.ClosedAt, &tunnel.AgentID)
+	err = s.pool.QueryRow(ctx, `INSERT INTO tunnels (user_id,agent_id,subdomain,local_address,status,opened_at) SELECT user_id,$1,$2,$3,'open',NOW() FROM agents WHERE id=$1 RETURNING id::text,subdomain,local_address,status,opened_at,closed_at,agent_id::text,user_id::text`, agentID, subdomain, localAddress).Scan(&tunnel.ID, &tunnel.Subdomain, &tunnel.LocalAddress, &tunnel.Status, &tunnel.OpenedAt, &tunnel.ClosedAt, &tunnel.AgentID, &tunnel.UserID)
 	if err != nil {
 		return Tunnel{}, fmt.Errorf("create tunnel: %w", err)
 	}

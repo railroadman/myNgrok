@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func NewHandler(logger *slog.Logger, ready func() bool, authHandler, agentTokenHandler, agentConnectHandler, agentsHandler, tunnelsHandler, publicHandler http.Handler, corsAllowedOrigins []string, configuredMetrics ...*Metrics) http.Handler {
+func NewHandler(logger *slog.Logger, ready func() bool, authHandler, agentTokenHandler, agentConnectHandler, agentsHandler, tunnelsHandler, trafficHandler, publicHandler http.Handler, corsAllowedOrigins []string, configuredMetrics ...*Metrics) http.Handler {
 	metrics := NewMetrics()
 	if len(configuredMetrics) > 0 && configuredMetrics[0] != nil {
 		metrics = configuredMetrics[0]
@@ -23,6 +23,7 @@ func NewHandler(logger *slog.Logger, ready func() bool, authHandler, agentTokenH
 	mux.Handle("/api/v1/agent/connect", agentConnectHandler)
 	mux.Handle("/api/v1/agents", agentsHandler)
 	mux.Handle("/api/v1/tunnels", tunnelsHandler)
+	mux.Handle("/api/v1/traffic", trafficHandler)
 	mux.Handle("/", publicHandler)
 	return requestID(requestLog(logger, securityHeaders(cors(corsAllowedOrigins, metrics.Middleware(mux)))))
 }

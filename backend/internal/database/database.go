@@ -45,8 +45,23 @@ func (p *Pool) Ping(ctx context.Context) error {
 	return nil
 }
 
+// migrationLockKey is an arbitrary constant used with pg_advisory_lock to
+// serialize concurrent Migrate calls (e.g. from parallel test packages
+// sharing one database) so they don't race to create the same table twice.
+const migrationLockKey = 727384910
+
 func (p *Pool) Migrate(ctx context.Context) error {
-	if _, err := p.pool.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+	conn, err := p.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection for migration lock: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockKey)
+
+	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
         version TEXT PRIMARY KEY,
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`); err != nil {
@@ -54,13 +69,13 @@ func (p *Pool) Migrate(ctx context.Context) error {
 	}
 	for _, migration := range migrations.All {
 		var exists bool
-		if err := p.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, migration.Version).Scan(&exists); err != nil {
+		if err := conn.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)`, migration.Version).Scan(&exists); err != nil {
 			return fmt.Errorf("check migration %s: %w", migration.Version, err)
 		}
 		if exists {
 			continue
 		}
-		tx, err := p.pool.Begin(ctx)
+		tx, err := conn.Begin(ctx)
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", migration.Version, err)
 		}
